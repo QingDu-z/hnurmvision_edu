@@ -109,3 +109,4 @@ simulation/simulator/bin/daedalus
 
 仿真场景和靶车由 `simulation/simulator/config.toml` 配置。`[training] enabled=true` 时生成
 教学观察车和训练靶，设为 `false` 时回到手动场景。
+This is the intro branch created by QingDu-z.
