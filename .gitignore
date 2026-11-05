@@ -22,3 +22,8 @@
 
 # Local simulation diagnostics
 /simulation/outputs/
+
+# 数据集与仿真采集帧
+dataset/
+simulation/simulator/dataset/
+.opencode/

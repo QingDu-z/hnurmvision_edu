@@ -2,7 +2,7 @@
 #include "io_context.hpp"
 #include <opencv2/highgui.hpp>
 #include <csignal>
-
+#include <opencv2/imgproc.hpp>
 namespace {
 volatile std::sig_atomic_t interrupted = 0;
 void on_signal(int) { interrupted = 1; }
@@ -20,8 +20,9 @@ int main(int argc, char** argv) {
   while (!interrupted) {
     const auto input = devices.read();
     training::Command command{};
+    std::vector<training::Armor> armors;
     if (input) {
-      const auto armors = training::lesson03_detection(input->image);
+      armors = training::lesson03_detection(input->image);
       const auto target = training::lesson04_tracking(
           armors, input->timestamp, input->imu_q, calibration, tracking);
       if (target)
@@ -31,7 +32,15 @@ int main(int argc, char** argv) {
     devices.write(command);
 
     if (input && devices.config.display) {
-      cv::imshow("RoboMaster training", input->image);
+            cv::Mat vis = input->image.clone();
+      for (const auto& a : armors) {
+        std::vector<cv::Point> pts;
+        for (const auto& c : a.corners) pts.emplace_back(cvRound(c.x), cvRound(c.y));
+        cv::polylines(vis, pts, true, cv::Scalar(0, 255, 0), 2);
+        cv::putText(vis, a.large_armor ? "L" : "S", pts[0],
+                    cv::FONT_HERSHEY_SIMPLEX, 0.8, cv::Scalar(0, 255, 0), 2);
+      }
+      cv::imshow("RoboMaster training", vis);
       const int key = cv::waitKey(1);
       if (key == 27 || key == 'q') break;
     }

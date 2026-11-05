@@ -6,7 +6,7 @@ find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(hnurm_interfaces REQUIRED)
-find_package(OpenCV REQUIRED COMPONENTS core imgproc highgui calib3d)
+find_package(OpenCV REQUIRED COMPONENTS core imgproc highgui calib3d dnn)
 find_package(Eigen3 REQUIRED)
 find_package(yaml-cpp REQUIRED)
 add_library(training_io io/config.cpp)
@@ -20,3 +20,9 @@ add_library(training_lessons lessons/lesson02_io.cpp
 target_link_libraries(training_lessons PUBLIC training_io)
 add_executable(training src/main.cpp)
 target_link_libraries(training PRIVATE training_lessons)
+
+add_executable(detect_preview tools/detect_preview.cpp)
+target_link_libraries(detect_preview PRIVATE training_lessons)
+
+add_executable(eval_detect tools/eval_detect.cpp)
+target_link_libraries(eval_detect PRIVATE training_lessons)
