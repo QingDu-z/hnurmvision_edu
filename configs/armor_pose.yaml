@@ -1,0 +1,19 @@
+path: /home/zhang/hnurmvision_edu/dataset_norm
+train: train/images
+val: val/images
+kpt_shape: [4, 2]
+names:
+  0: B1
+  1: B2
+  2: B3
+  3: B4
+  4: B5
+  5: BO
+  6: BS
+  7: R1
+  8: R2
+  9: R3
+  10: R4
+  11: R5
+  12: RO
+  13: RS

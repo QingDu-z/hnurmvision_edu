@@ -27,3 +27,8 @@
 dataset/
 simulation/simulator/dataset/
 .opencode/
+
+# 本地产物
+dataset_norm/
+runs/
+yolo11n-pose.pt

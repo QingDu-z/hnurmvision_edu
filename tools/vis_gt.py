@@ -54,6 +54,12 @@ def load_labels(txt: Path):
     return rows
 
 
+def is_canonical(pts):
+    """严格判据：TL,TR,BR,BL 的四条不等式同时成立。"""
+    return (pts[1][0] > pts[0][0] and pts[2][1] > pts[1][1]
+            and pts[3][0] < pts[2][0] and pts[0][1] < pts[3][1])
+
+
 def order_pattern(pts):
     """把四角按相对质心的位置标成 TL/TR/BL/BR，得到绕序字符串。"""
     cx, cy = pts[:, 0].mean(), pts[:, 1].mean()
@@ -88,6 +94,25 @@ def main():
     print(f"[核对] {a.split}: 图片 {len(imgs)} 张，标签 {len(lbls)} 个")
     if len(imgs) != len(lbls):
         print("  ⚠ 图片与标签数量不一致，先查缺哪个")
+
+    if a.order_check:
+        total = strict_ok = 0
+        pat_all = Counter()
+        for txt in lbls:
+            rows = load_labels(txt)
+            if not rows:
+                continue
+            for _cls, pts in rows:
+                total += 1
+                strict_ok += is_canonical(pts)
+                pat_all[order_pattern(pts)] += 1
+        print(f"[核对] 全量扫描 {len(lbls)} 个标签，实例 {total} 个")
+        print(f"[核对] 严格合规（TL,TR,BR,BL）：{strict_ok}/{total} = "
+              f"{100.0 * strict_ok / max(1, total):.2f}%")
+        print("[核对] 质心法绕序分布（仅供参考，窄板会退化）：")
+        for k, n in pat_all.most_common(4):
+            print(f"    {k}: {n}")
+        return
 
     random.seed(a.seed)
     sample = random.sample(imgs, min(a.n, len(imgs)))

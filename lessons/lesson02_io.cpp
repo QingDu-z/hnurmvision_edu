@@ -20,6 +20,8 @@ constexpr double kRad2Deg = 180.0 / kPi;
 // 超出机械限位的指令一律降级为"停止"，不能送到真实电机上（课件 3.4）。
 constexpr double kPitchLimitRad = 0.7853981633974483;   //45度
 // 消息里的角度是"度"，这里统一换成本工程使用的弧度制。
+// 反馈超过这个时长没更新就视为失效：IO 层不允许用过期的姿态驱动云台（课件 3.4）
+constexpr auto kFeedbackTimeout = std::chrono::milliseconds(500);
 // 旋转顺序：R = Rz(yaw) * Ry(pitch) * Rx(roll)
 Eigen::Quaterniond euler_deg_to_quaternion(double yaw_deg, double pitch_deg,
                                            double roll_deg) {
@@ -105,6 +107,7 @@ void IoContext::on_feedback(
   feedback_.roll = msg->roll;            // 度
   feedback_.bullet_speed = static_cast<double>(msg->bullet_speed.data);  // m/s
   feedback_.work_mode = msg->work_mode.data;
+  feedback_.stamp = Clock::now(); //记下收到命令的时刻
   feedback_.valid = true;
 }
 
@@ -141,7 +144,7 @@ std::optional<SensorData> IoContext::read() {
   SensorData data;
   data.image = std::move(image_);  // 所有权转移，不额外拷贝；image_ 变为空
   has_image_ = false;              // 同一帧只交一次
-// 时间对齐：timestamp 由 header.stamp 换算到 steady_clock（见 docs/io-notes.md §2）。
+// 时间对齐：timestamp 由 header.stamp 换算到 steady_clock（见 README「第二讲：IO 层」）。
 
   data.timestamp = image_stamp_;
   data.imu_q = euler_deg_to_quaternion(feedback_.yaw, feedback_.pitch,
@@ -157,7 +160,7 @@ void IoContext::write(const Command& command) {
   const bool angles_finite =
       std::isfinite(command.yaw) && std::isfinite(command.pitch);
   const bool within_limit = std::abs(command.pitch) <= kPitchLimitRad;  //abs绝对值
-  const bool have_feedback = feedback_.valid;
+  const bool have_feedback = feedback_.valid && (Clock::now() - feedback_.stamp) < kFeedbackTimeout;
   const bool auto_aim_mode =
       have_feedback &&
       feedback_.work_mode == hnurm_interfaces::msg::WorkMode::AUTO_AIM;

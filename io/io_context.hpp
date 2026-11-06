@@ -36,7 +36,8 @@ struct IoContext {
     double pitch = 0;         // 俯仰度/y轴
     double roll = 0;          // 横滚度/x轴
     double bullet_speed = 0;  // m/s
-    std::uint8_t work_mode = 0;  //unsigned int 8bit （0～255）
+    std::uint8_t work_mode = 0; //unsigned int 8bit （0～255）
+    training::TimePoint stamp{};   // 最近一次收到反馈的时刻
     bool valid = false;   //有效
   };
   Feedback feedback_;
