@@ -234,7 +234,7 @@ yolo pose train model=yolo11n-pose.pt data=configs/armor_pose.yaml \
   epochs=40 imgsz=640 batch=8 device=0 fliplr=0.0 name=armor_n
 ```
 
-设计文档与答辩要点见 `docs/第三讲-检测学习路线.md`。
+
 
 ### 4. 演示录屏
 
