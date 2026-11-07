@@ -35,10 +35,18 @@ constexpr double kBarMaxTiltDeg = 20.0;    // 灯条长轴允许偏离竖直的�
 constexpr int kCalibCols = 1440;
 constexpr int kCalibRows = 1080;
 
+// ---- 板面验证参数（3 m 静态靶 53 帧标定；近距离/远距离需复测）----
+constexpr double kFaceThrRatio     = 0.30;   // 数字阈值 = 该比例 × 灯条均值
+constexpr double kFaceThrAbs       = 25.0;   // 阈值绝对下限，压住传感器噪声
+constexpr double kFaceRatioLo      = 0.03;   // 数字亮像素占比下限
+constexpr double kFaceRatioHi      = 0.70;   // 占比上限，防"整块亮面"
+constexpr double kFaceMaxMeanRatio = 0.65;   // 中间均值不得超过灯条均值的该比例
+constexpr double kFaceMinBarMean   = 1.0;    // 灯条过暗直接判无效
 struct Bar {
   cv::Rect rect;
   cv::Point2f center;
   double aspect = 0;
+  double tilt=0;   //长轴相对竖直方向的偏差，单位：度
 };
 
 // 步骤 1-3：亮度阈值 + 形态学 + 灯条筛选
@@ -68,7 +76,9 @@ std::vector<Bar> find_bars(const cv::Mat& gray) {
     const double d = std::abs(long_axis - 90.0);
     if (std::min(d, 180.0 - d) > kBarMaxTiltDeg) continue;
 
-    bars.push_back({r, {r.x + r.width * 0.5F, r.y + r.height * 0.5F}, aspect});
+        // tilt 存"相对竖直的偏差"，单位度；long_axis 本身是 [0,180) 的绝对角
+    bars.push_back({r, {r.x + r.width * 0.5F, r.y + r.height * 0.5F}, aspect,
+                    long_axis - 90.0});
   }
   return bars;
 }
@@ -107,12 +117,49 @@ bool try_pair(const Bar& a, const Bar& b, cv::Point2f corners[4], bool& is_large
   return true;
 }
 
+// 板面验证：两灯条之间必须存在"数字"亮斑（装甲板印刷的数字），
+// 否则说明这两根灯条来自相邻的两块板（中间是车体，纯黑）。
+// 阈值来自实测：误配帧中间均值 3.2 / 最大 12；灯条均值约 145。
+bool plate_face_ok(const cv::Mat& gray, const Bar& L, const Bar& R) {
+  const Bar& a = L.center.x <= R.center.x ? L : R;
+  const Bar& b = L.center.x <= R.center.x ? R : L;
+
+  const double tilt_deg = std::max(std::abs(a.tilt), std::abs(b.tilt));   // 度
+  const double half_w = 0.5 * (b.rect.x - (a.rect.x + a.rect.width));
+  const int inset_y = static_cast<int>(std::tan(tilt_deg * kPi / 180.0) * half_w) + 2;
+
+  int x0 = std::max(a.rect.x + a.rect.width + 2, 0);
+  int x1 = std::min(b.rect.x - 2, gray.cols);
+  int y0 = std::max(std::max(a.rect.y, b.rect.y) + inset_y, 0);
+  int y1 = std::min(std::min(a.rect.y + a.rect.height, b.rect.y + b.rect.height) - inset_y,
+                    gray.rows);
+  if (x1 - x0 < 6 || y1 - y0 < 4) return false;
+
+  const cv::Rect inner(x0, y0, x1 - x0, y1 - y0);
+  const cv::Mat roi = gray(inner);
+
+  const double bar_mean =
+      0.5 * (cv::mean(gray(a.rect))[0] + cv::mean(gray(b.rect))[0]);
+  if (bar_mean < kFaceMinBarMean) return false;
+
+  const double thr = std::max(kFaceThrRatio * bar_mean, kFaceThrAbs);
+  const double bright_ratio = cv::countNonZero(roi > thr) /
+                              (static_cast<double>(inner.width) * inner.height);
+
+  if (cv::mean(roi)[0] > kFaceMaxMeanRatio * bar_mean) return false;
+  return bright_ratio > kFaceRatioLo && bright_ratio < kFaceRatioHi;
+}
 // 可选：把中间结果存成图，方便调参（父目录必须已存在）
 void debug_dump(const cv::Mat& image, const std::vector<Bar>& bars,
                 const std::vector<Armor>& armors) {
   const char* dir = std::getenv("DETECT_DEBUG_DIR");
   if (dir == nullptr) return;
   static int seq = 0;
+  static int counter = 0;
+  constexpr int kEvery = 30;    // 每 30 帧存一次
+  constexpr int kMax   = 40;    // 最多 40 组
+  if (seq >= kMax) return;
+  if ((counter++ % kEvery) != 0) return;
   const std::string prefix = std::string(dir) + "/det_" + std::to_string(seq++);
 
   cv::Mat gray;
@@ -168,7 +215,7 @@ std::vector<Armor> lesson03_detection(const cv::Mat& image) {
       cv::Point2f corners[4];
       bool is_large = false;
       if (!try_pair(bars[i], bars[j], corners, is_large)) continue;
-
+      if (!plate_face_ok(gray, bars[i], bars[j])) continue;
       Armor armor;
       armor.corners = {corners[0], corners[1], corners[2], corners[3]};
       armor.large_armor = is_large;

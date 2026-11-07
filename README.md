@@ -238,4 +238,4 @@ yolo pose train model=yolo11n-pose.pt data=configs/armor_pose.yaml \
 
 ### 4. 演示录屏
 
-> ⏳ 待补：任务 1 的运行录屏（四镜头：检测框、跨距离、多目标、漏检对照）。
+> 运行录屏按队里要求单独提交，不在本仓库内。
