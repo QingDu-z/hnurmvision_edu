@@ -93,12 +93,14 @@ int main(int argc, char** argv) {
   double min_w = 0.0;          // 只统计宽度 >= min_w 像素的 GT（默认全部）
   bool verbose = false;  (void)verbose;
   std::string dump_dir;        // 非空则把 GT(蓝) 与检出(绿) 画到图里
+  std::string json_path;       // 非空则导出传统检出（融合原型用）
   for (int i = 2; i < argc; ++i) {
     const std::string a = argv[i];
     if (a == "--iou" && i + 1 < argc) iou_thresh = std::stod(argv[++i]);
     else if (a == "--min-w" && i + 1 < argc) min_w = std::stod(argv[++i]);
     else if (a == "--verbose") verbose = true;
     else if (a == "--dump" && i + 1 < argc) dump_dir = argv[++i];
+    else if (a == "--save-json" && i + 1 < argc) json_path = argv[++i];
   }
 
   struct Stats {
@@ -109,6 +111,11 @@ int main(int argc, char** argv) {
   // 两个口径一起统计：0 = 全量 GT，1 = 只看宽度 >= min_w 的 GT
   Stats stats[2];
   int frames = 0, empty_frames = 0, fp_frames = 0;
+  std::ofstream jf;
+  if (!json_path.empty()) {
+    jf.open(json_path);
+    if (!jf) { std::cerr << "无法写 " << json_path << "\n"; return 1; }
+  }
 
   for (int idx = 0;; ++idx) {
     char name[64];
@@ -119,6 +126,13 @@ int main(int argc, char** argv) {
     ++frames;
     const auto gts_all = load_gt(dir + "/label/" + name + ".txt");
     const auto dets = training::lesson03_detection(img);
+    if (!json_path.empty() && jf.is_open()) {
+      for (const auto& d : dets) {
+        jf << name;
+        for (const auto& c : d.corners) jf << ' ' << c.x << ' ' << c.y;
+        jf << '\n';
+      }
+    }
 
     for (int pass = 0; pass < 2; ++pass) {
       const double thr = pass == 0 ? 0.0 : (min_w > 0.0 ? min_w : 30.0);
