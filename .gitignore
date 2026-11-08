@@ -32,3 +32,4 @@ simulation/simulator/dataset/
 dataset_norm/
 runs/
 yolo11n-pose.pt
+simulation/simulator/dataset*/

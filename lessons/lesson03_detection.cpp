@@ -8,7 +8,7 @@
 #include <iostream>
 #include <string>
 #include <vector>
-
+#include <cstdio>
 namespace training {
 namespace {
 
@@ -82,22 +82,29 @@ std::vector<Bar> find_bars(const cv::Mat& gray) {
   }
   return bars;
 }
-
+enum PairFail {
+  kPairOk = 0,
+  kFailHeight,    // 两灯条高度差过大
+  kFailCenter,    // 中心 y 差过大
+  kFailGap,       // 间距比不在范围
+  kFailPlateH,    // 板高超出范围
+  kFailCount
+};
 // 步骤 4：两两配对成装甲板，返回四角点（左上、右上、右下、左下）
-bool try_pair(const Bar& a, const Bar& b, cv::Point2f corners[4], bool& is_large) {
+ PairFail try_pair(const Bar& a, const Bar& b, cv::Point2f corners[4], bool& is_large) {
   const Bar& left = a.center.x <= b.center.x ? a : b;
   const Bar& right = a.center.x <= b.center.x ? b : a;
 
   const double h = std::max(left.rect.height, right.rect.height);
   const double hdiff = std::abs(left.rect.height - right.rect.height) / static_cast<double>(h);
-  if (hdiff > kPairMaxHeightDiff) return false;
+  if (hdiff > kPairMaxHeightDiff) return kFailHeight;
 
   const double cdiff = std::abs(left.center.y - right.center.y) / h;
-  if (cdiff > kPairMaxCenterDiff) return false;
+  if (cdiff > kPairMaxCenterDiff) return kFailCenter;
 
   const double gap = right.rect.x - (left.rect.x + left.rect.width);
   const double g = gap / h;
-  if (g < kPairMinGapRatio || g > kPairMaxGapRatio) return false;
+  if (g < kPairMinGapRatio || g > kPairMaxGapRatio) return kFailGap;
 
   const float top = std::min(left.rect.y, right.rect.y);
   const float bottom = std::max(left.rect.y + left.rect.height,
@@ -112,9 +119,9 @@ bool try_pair(const Bar& a, const Bar& b, cv::Point2f corners[4], bool& is_large
 
   const double plate_w = x1 - x0;
   const double plate_h = bottom - top;
-  if (plate_h < kPlateMinHeightPx || plate_h > kPlateMaxHeightPx) return false;
+  if (plate_h < kPlateMinHeightPx || plate_h > kPlateMaxHeightPx) return kFailPlateH;
   is_large = plate_h > 0 && (plate_w / plate_h) > kLargeArmorAspect;
-  return true;
+  return kPairOk;
 }
 
 // 板面验证：两灯条之间必须存在"数字"亮斑（装甲板印刷的数字），
@@ -205,7 +212,10 @@ std::vector<Armor> lesson03_detection(const cv::Mat& image) {
   cv::cvtColor(image, gray, cv::COLOR_BGR2GRAY);
 
   const std::vector<Bar> bars = find_bars(gray);
-
+  // 诊断计数：
+  std::size_t n_pair = 0;
+  std::size_t n_face_reject = 0;
+  std::size_t fails[kFailCount] = {0};
   // 贪心配对：按灯条从左到右，尽量一一配对，避免同一根被重复使用
   std::vector<bool> used(bars.size(), false);
   for (std::size_t i = 0; i < bars.size(); ++i) {
@@ -214,12 +224,21 @@ std::vector<Armor> lesson03_detection(const cv::Mat& image) {
       if (used[j]) continue;
       cv::Point2f corners[4];
       bool is_large = false;
-      if (!try_pair(bars[i], bars[j], corners, is_large)) continue;
-      if (!plate_face_ok(gray, bars[i], bars[j])) continue;
+      const PairFail reason = try_pair(bars[i], bars[j], corners, is_large);
+      if (reason != kPairOk) {
+        ++fails[reason];
+        continue;
+      }
+      ++n_pair;
+      if (!plate_face_ok(gray, bars[i], bars[j])) {
+        ++n_face_reject;
+        continue;
+      }
+
       Armor armor;
       armor.corners = {corners[0], corners[1], corners[2], corners[3]};
       armor.large_armor = is_large;
-      armor.class_id = -1;    // 编号交给 P4.5 的分类器，先按课件允许填 -1
+      armor.class_id = -1;    // 编号交给分类器，先按课件允许填 -1
       armor.confidence = 1.0; // 传统管线的"置信度"暂时恒为 1
       armors.push_back(armor);
 
@@ -228,6 +247,14 @@ std::vector<Armor> lesson03_detection(const cv::Mat& image) {
     }
   }
 
+  // 每 30 帧打印一次统计
+  static int dbg_counter = 0;
+  if (std::getenv("DET_STATS") && ++dbg_counter % 30 == 0) {
+    std::printf("[det] bars=%zu pair=%zu face=%zu armors=%zu | h=%zu c=%zu gap=%zu ph=%zu\n",
+                bars.size(), n_pair, n_face_reject, armors.size(),
+                fails[kFailHeight], fails[kFailCenter], fails[kFailGap],
+                fails[kFailPlateH]);
+  }
   debug_dump(image, bars, armors);
   return armors;
 }

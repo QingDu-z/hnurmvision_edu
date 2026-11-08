@@ -69,7 +69,16 @@ double iou(const cv::Rect2f& a, const cv::Rect2f& b) {
 }
 
 cv::Rect2f bbox(const std::array<cv::Point2f, 4>& p) {
-  return cv::boundingRect(std::vector<cv::Point2f>(p.begin(), p.end()));
+  // 用浮点包围盒：cv::boundingRect 传浮点会返回整数 Rect（ceil(max)-floor(min)），
+  // 宽度比真实值多 0~1 px，会让 29.x px 的板被算进 ">=30 px" 口径。
+  float x0 = p[0].x, x1 = p[0].x, y0 = p[0].y, y1 = p[0].y;
+  for (int i = 1; i < 4; ++i) {
+    x0 = std::min(x0, p[i].x);
+    x1 = std::max(x1, p[i].x);
+    y0 = std::min(y0, p[i].y);
+    y1 = std::max(y1, p[i].y);
+  }
+  return cv::Rect2f(x0, y0, x1 - x0, y1 - y0);
 }
 
 }  // namespace
